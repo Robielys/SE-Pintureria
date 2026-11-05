@@ -201,3 +201,147 @@ class SistemaExpertoPintura(KnowledgeEngine):
     def herramientas_esmalte(self):
         self.reglas_disparadas.append("herramientas_esmalte")
         self.declare(InsumoAdicional(categoria="Herramientas", item="Pincel de cerda pura o Rodillo para sintético"))
+        self.declare(InsumoAdicional(categoria="Limpieza", item="Aguarrás mineral"))
+
+    @Rule(EsquemaRecomendado(terminacion=P(lambda t: "Impregnante" in t) | P(lambda t: "Barniz" in t)))
+    def herramientas_impregnante(self):
+        self.reglas_disparadas.append("herramientas_impregnante")
+        self.declare(InsumoAdicional(categoria="Herramientas", item="Pincel de cerda fina o Pistola de pintar"))
+        self.declare(InsumoAdicional(categoria="Limpieza", item="Aguarrás mineral"))
+
+    @Rule(EsquemaRecomendado(terminacion=P(lambda t: "Siliconado" in t)))
+    def herramientas_silicona(self):
+        self.reglas_disparadas.append("herramientas_silicona")
+        self.declare(InsumoAdicional(categoria="Herramientas", item="Pulverizador manual o brocha ancha"))
+
+    # --- BLOQUE 5: CADENA CAUSAL PROFUNDA DE SEGURIDAD (NIVEL 3 -> NIVEL 4) ---
+    @Rule(InsumoAdicional(item=L("Aguarrás mineral")))
+    def seguridad_solventes(self):
+        self.reglas_disparadas.append("seguridad_solventes")
+        self.declare(MedidaSeguridad(protocolo="Ventilación Obligatoria: Los vapores orgánicos del solvente son tóxicos e inflamables. Utilizar en ambiente ventilado o con máscara de carbón activado."))
+
+    @Rule(InsumoAdicional(item=P(lambda i: "Fungicida" in i or "Lavandina" in i)))
+    def seguridad_quimicos(self):
+        self.reglas_disparadas.append("seguridad_quimicos")
+        self.declare(MedidaSeguridad(protocolo="Protección Ocular y Dérmica: Riesgo de quemaduras químicas. Uso obligatorio de guantes de látex/nitrilo y antiparras para salpicaduras."))
+
+    @Rule(InsumoAdicional(item=P(lambda i: "Espátula" in i or "Cepillo de alambre" in i)))
+    def seguridad_particulas(self):
+        self.reglas_disparadas.append("seguridad_particulas")
+        self.declare(MedidaSeguridad(protocolo="Protección Respiratoria y Ocular: El rasqueteo mecánico libera partículas. Usar barbijo para polvo (N95) y antiparras para polvo."))
+
+
+# ==============================================================================
+# 4. LÓGICA Y MAPEO
+# ==============================================================================
+OPCIONES_SUSTRATO = {
+    "Pared existente / Revoque viejo": "revoque_viejo",
+    "Pared nueva / Revoque fresco": "revoque_nuevo",
+    "Ladrillo a la vista": "ladrillo",
+    "Metal / Hierro": "metal",
+    "Madera": "madera",
+    "Yeso": "yeso"
+}
+
+OPCIONES_ESTADO = {
+    "Tiene hongos o moho": "hongos",
+    "Tiene óxido": "oxido",
+    "Tiene manchas blancas de salitre o humedad": "eflorescencia",
+    "Está sin pintar (virgen)": "virgen",
+    "Tiene pintura descascarada / saltada": "descascarada",
+    "Está en buen estado (pintada)": "buen_estado"
+}
+
+OPCIONES_UBICACION = {
+    "Interior (Habitaciones, pasillos, etc.)": "interior",
+    "Exterior (Fachadas, patios, intemperie)": "exterior"
+}
+
+def resolver_sistema_experto(sustrato_label, estado_label, ubicacion_label, alto, ancho):
+    if alto is None or ancho is None or alto <= 0 or ancho <= 0:
+        return "⚠️ **Por favor, ingresa dimensiones de alto y ancho válidas (mayores a 0).**", ""
+
+    m2 = float(alto * ancho)
+
+    motor = SistemaExpertoPintura()
+    motor.reset()
+    motor.declare(Superficie(
+        sustrato=OPCIONES_SUSTRATO[sustrato_label],
+        estado=OPCIONES_ESTADO[estado_label],
+        ubicacion=OPCIONES_UBICACION[ubicacion_label],
+        m2=float(m2)
+    ))
+    motor.run()
+
+    alertas = [f for f in motor.facts.values() if isinstance(f, AlertaIncompatibilidad)]
+    if alertas:
+        lineas_alerta = [
+            "## ⚠️ Recomendación Especial",
+            "**No es posible recomendar una pintura directa para este caso.**",
+            ""
+        ]
+        for a in alertas:
+            lineas_alerta.append(f"**Motivo:** {a['motivo']}")
+            lineas_alerta.append(f"- **Explicación:** {a['detalle']}")
+            lineas_alerta.append(f"\n👉 **¿Qué debes hacer?:** {a['accion']}")
+            lineas_alerta.append("\n⚠️ **Se recomienda solicitar la inspección de un profesional de la construcción en el lugar antes de aplicar cualquier recubrimiento.**")
+
+        traza_alerta = "### 🔎 Detalle Técnico\n- El motor de reglas detuvo la recomendación para evitar una falla en la aplicación por humedad no tratada."
+        return "\n".join(lineas_alerta), traza_alerta
+
+    lineas = [
+        "## 📋 Tu Lista de Materiales y Guía de Trabajo",
+        f"*Resumen:* Superficie de **{m2:.2f} m²** | Material: **{sustrato_label}** | Ubicación: **{ubicacion_label}**",
+        "---",
+        "### 1. 🛠️ Pasos Previos de Preparación"
+    ]
+
+    tratamientos = [f for f in motor.facts.values() if isinstance(f, NecesidadTratamiento)]
+    if tratamientos:
+        for idx, t in enumerate(tratamientos, 1):
+            lineas.append(f"- {t['paso']}")
+    else:
+        lineas.append("- La superficie está lista para pintar. Solo realiza una limpieza básica del polvo con un trapo seco.")
+
+    lineas.append("\n### 2. 🎨 Pinturas y Cantidades a Comprar")
+    esquemas = [f for f in motor.facts.values() if isinstance(f, EsquemaRecomendado)]
+    for e in esquemas:
+        if e['litros_fondo'] > 0:
+            lineas.append(f"- **Base / Imprimación:** {e['fondo']} → **Comprar approx. {e['litros_fondo']} Litro(s)**")
+        lineas.append(f"- **Pintura de Terminación:** {e['terminacion']} ({e['manos']} manos) → **Comprar approx. {e['litros_terminacion']} Litro(s)**")
+
+    lineas.append("\n### 3. 🧰 Herramientas y Elementos Recomendados")
+    insumos = [f for f in motor.facts.values() if isinstance(f, InsumoAdicional)]
+    categorias = {}
+    for i in insumos:
+        cat = i['categoria']
+        categorias.setdefault(cat, set()).add(i['item'])
+
+    for cat, items in categorias.items():
+        lineas.append("") 
+        lineas.append(f"**[{cat}]**")
+        for item in items:
+            lineas.append(f"- {item}")
+
+    lineas.append("\n### 4. ⚠️ Protocolos de Seguridad Derivados")
+    seguridad = [f for f in motor.facts.values() if isinstance(f, MedidaSeguridad)]
+    if seguridad:
+        for s in seguridad:
+            lineas.append(f"- {s['protocolo']}")
+    else:
+        lineas.append("- No se detectaron riesgos químicos especiales para este esquema.")
+
+    traza = ["### 🔎 Trazabilidad del Razonamiento"]
+    traza.append("**1. Reglas activadas (Cadena de Inferencia):**")
+    for regla in motor.reglas_disparadas:
+        traza.append(f"- Regla ejecutada: `{regla}`")
+
+    traza.append("\n**2. Hechos deducidos (Memoria de Trabajo):**")
+    for hecho in motor.facts.values():
+        traza.append(f"- `{type(hecho).__name__}: {dict(hecho)}`")
+
+    return "\n".join(lineas), "\n".join(traza)
+
+# ==============================================================================
+# 5. INTERFAZ GRÁFICA (STREAMLIT UI)
+# =================================================================
