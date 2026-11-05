@@ -1,20 +1,21 @@
-import streamlit as st
+import sys
+import subprocess
 import collections
 import collections.abc
-import math
 
-# ==============================================================================
-# 1. PARCHE DE COMPATIBILIDAD DE EXPERTA (Debe ir ANTES de importar experta)
-# ==============================================================================
+# Parche de compatibilidad de Experta para Python 3.10+
 for nombre in ("Mapping", "MutableMapping", "Sequence", "Iterable", "Callable"):
     if not hasattr(collections, nombre) and hasattr(collections.abc, nombre):
         setattr(collections, nombre, getattr(collections.abc, nombre))
 
+import streamlit as st
 from experta import Fact, KnowledgeEngine, Rule, MATCH, L, P
+import math
 
 # ==============================================================================
-# 2. DEFINICIÓN DE HECHOS (Memoria de Trabajo)
+# 3. DEFINICIÓN DE HECHOS (Memoria de Trabajo)
 # ==============================================================================
+
 class Superficie(Fact):
     pass
 
@@ -34,8 +35,9 @@ class MedidaSeguridad(Fact):
     pass
 
 # ==============================================================================
-# 3. MOTOR DE INFERENCIA (LÓGICA INTACTA)
+# 4. MOTOR DE INFERENCIA
 # ==============================================================================
+
 class SistemaExpertoPintura(KnowledgeEngine):
     def __init__(self):
         super().__init__()
@@ -232,8 +234,9 @@ class SistemaExpertoPintura(KnowledgeEngine):
 
 
 # ==============================================================================
-# 4. LÓGICA Y MAPEO
+# 5. LÓGICA Y MAPEO
 # ==============================================================================
+
 OPCIONES_SUSTRATO = {
     "Pared existente / Revoque viejo": "revoque_viejo",
     "Pared nueva / Revoque fresco": "revoque_nuevo",
@@ -273,6 +276,7 @@ def resolver_sistema_experto(sustrato_label, estado_label, ubicacion_label, alto
     ))
     motor.run()
 
+    # Manejo de Alertas para el usuario
     alertas = [f for f in motor.facts.values() if isinstance(f, AlertaIncompatibilidad)]
     if alertas:
         lineas_alerta = [
@@ -289,9 +293,10 @@ def resolver_sistema_experto(sustrato_label, estado_label, ubicacion_label, alto
         traza_alerta = "### 🔎 Detalle Técnico\n- El motor de reglas detuvo la recomendación para evitar una falla en la aplicación por humedad no tratada."
         return "\n".join(lineas_alerta), traza_alerta
 
+    # Salida normal para el usuario
     lineas = [
         "## 📋 Tu Lista de Materiales y Guía de Trabajo",
-        f"*Resumen:* Superficie de **{m2:.2f} m²** | Material: **{sustrato_label}** | Ubicación: **{ubicacion_label}**",
+        f"*Resumen:* Superficie de **{m2} m²** | Material: **{sustrato_label}** | Ubicación: **{ubicacion_label}**",
         "---",
         "### 1. 🛠️ Pasos Previos de Preparación"
     ]
@@ -318,7 +323,7 @@ def resolver_sistema_experto(sustrato_label, estado_label, ubicacion_label, alto
         categorias.setdefault(cat, set()).add(i['item'])
 
     for cat, items in categorias.items():
-        lineas.append("") 
+        lineas.append("") # Inyecta una línea en blanco para terminar la lista Markdown anterior
         lineas.append(f"**[{cat}]**")
         for item in items:
             lineas.append(f"- {item}")
@@ -331,7 +336,9 @@ def resolver_sistema_experto(sustrato_label, estado_label, ubicacion_label, alto
     else:
         lineas.append("- No se detectaron riesgos químicos especiales para este esquema.")
 
+    # Trazabilidad técnica real (Explicabilidad)
     traza = ["### 🔎 Trazabilidad del Razonamiento"]
+
     traza.append("**1. Reglas activadas (Cadena de Inferencia):**")
     for regla in motor.reglas_disparadas:
         traza.append(f"- Regla ejecutada: `{regla}`")
@@ -342,6 +349,77 @@ def resolver_sistema_experto(sustrato_label, estado_label, ubicacion_label, alto
 
     return "\n".join(lineas), "\n".join(traza)
 
+
 # ==============================================================================
-# 5. INTERFAZ GRÁFICA (STREAMLIT UI)
-# =================================================================
+# ==============================================================================
+# 6. INTERFAZ GRÁFICA (Streamlit)
+# ==============================================================================
+
+st.set_page_config(
+    page_title="Asistente de Pintado",
+    page_icon="🖌️",
+    layout="centered"
+)
+
+st.title("🖌️ Asistente Técnico para Pintar tu Superficie")
+st.write(
+    "Ingresa los datos de tu pared, madera o metal y calcula automáticamente "
+    "qué productos, cantidades y herramientas necesitas."
+)
+
+col1, col2 = st.columns(2)
+
+with col1:
+    sustrato = st.selectbox(
+        "¿De qué material es tu superficie?",
+        options=list(OPCIONES_SUSTRATO.keys()),
+        index=list(OPCIONES_SUSTRATO.keys()).index("Pared existente / Revoque viejo")
+    )
+
+with col2:
+    estado = st.selectbox(
+        "¿En qué estado se encuentra?",
+        options=list(OPCIONES_ESTADO.keys()),
+        index=list(OPCIONES_ESTADO.keys()).index("Tiene hongos o moho")
+    )
+
+col3, col4, col5 = st.columns(3)
+
+with col3:
+    ubicacion = st.selectbox(
+        "¿Dónde está ubicada?",
+        options=list(OPCIONES_UBICACION.keys()),
+        index=list(OPCIONES_UBICACION.keys()).index(
+            "Interior (Habitaciones, pasillos, etc.)"
+        )
+    )
+
+with col4:
+    alto = st.number_input(
+        "Alto de la superficie (metros)",
+        min_value=0.0,
+        value=3.0,
+        step=0.1,
+        format="%.2f"
+    )
+
+with col5:
+    ancho = st.number_input(
+        "Ancho de la superficie (metros)",
+        min_value=0.0,
+        value=4.0,
+        step=0.1,
+        format="%.2f"
+    )
+
+if st.button("⚡ Consultar Materiales y Diagnóstico", type="primary"):
+    resultado, diagnostico = resolver_sistema_experto(
+        sustrato, estado, ubicacion, alto, ancho
+    )
+    st.session_state["resultado_pintura"] = resultado
+    st.session_state["diagnostico_pintura"] = diagnostico
+
+if "resultado_pintura" in st.session_state:
+    st.markdown(st.session_state["resultado_pintura"])
+    with st.expander("🔎 Ver detalle técnico de reglas del sistema"):
+        st.markdown(st.session_state["diagnostico_pintura"])
