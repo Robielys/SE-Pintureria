@@ -1,3 +1,3 @@
-streamlit>=1.32,<2
-experta==1.9.4
-frozendict==1.2
+streamlit
+experta
+frozendict
