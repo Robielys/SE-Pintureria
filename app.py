@@ -200,4 +200,4 @@ class SistemaExpertoPintura(KnowledgeEngine):
     @Rule(EsquemaRecomendado(terminacion=P(lambda t: "Esmalte" in t)))
     def herramientas_esmalte(self):
         self.reglas_disparadas.append("herramientas_esmalte")
-        self.declare(InsumoAdicional(categoria="Herramientas", item="Pincel
+self.declare(InsumoAdicional(categoria="Herramientas", item="Pincel de cerda pura o Rodillo para sintético"))
